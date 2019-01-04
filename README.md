@@ -3,7 +3,7 @@
 This app shows how to use an ngram model to allow the user to select words based on the input
 
 
-The model is generated using this []NLP ngram project](https://github.com/mccorby/MachineLearning/tree/master/src/main/kotlin/com/mccorby/machinelearning/nlp)
+The model is generated using this [NLP ngram project](https://github.com/mccorby/MachineLearning/tree/master/src/main/kotlin/com/mccorby/machinelearning/nlp)
 
 Because the model can be built using a specific corpus the predictions are relevant to the potential business model of the app.
 
