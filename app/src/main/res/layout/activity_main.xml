@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<RelativeLayout
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools"
+        tools:context=".MainActivity"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+
+    <EditText
+            android:id="@+id/edit_area"
+            android:hint="Write here"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@android:color/background_light"
+            android:layout_alignParentTop="true"/>
+
+
+    <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/edit_area">
+        <TextView
+                android:id="@+id/first_prediction"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                tools:text="First Prediction"
+                android:layout_weight="1"
+        />
+        <TextView
+                android:id="@+id/second_prediction"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                tools:text="Second Prediction"
+                android:layout_weight="1"
+        />
+
+        <TextView
+                android:id="@+id/third_prediction"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                tools:text="Third Prediction"
+                android:layout_weight="1"
+        />
+    </LinearLayout>
+
+</RelativeLayout>
