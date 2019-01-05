@@ -20,4 +20,31 @@ class PredictViewModelTest {
         // Then
         assertEquals(nPredictions, result)
     }
+
+    //     @get:Rule
+    //    val testRule: TestRule = InstantTaskExecutorRule()
+
+    // setUp {
+//    given(boxConnectivityViewModelFactory.create(any())).willReturn(baseBoxConnectivityViewModel)
+    // }
+
+
+    //    @Test
+    //    fun `given no downloads and connected to box, when loading downloads, then view model is given connected empty downloads error state`() {
+    //        // Given
+    //        whenever(getDownloadItemsSortedByCreationTimeUseCase.buildUseCase()).thenReturn(Flowable.just(emptyList()))
+    //        whenever(getCurrentBoxConnectivityResultUseCase.buildUseCase()).thenReturn(Single.just(BoxConnectivityResult(BoxConnectivityState.Connection.Connected.NotFirstTime, false)))
+    //
+    //        // When
+    //        cut.initialize()
+    //        cut.viewState.observeForever(downloadsViewStateObserver)
+    //
+    //        // Then
+    //        val viewStateCaptor = ArgumentCaptor.forClass(DownloadsViewState::class.java)
+    //        verify(downloadsViewStateObserver).onChanged(capture(viewStateCaptor))
+    //        val viewState = viewStateCaptor.value
+    //        assertNotNull(viewState)
+    //        assertEquals(DownloadsViewState.ErrorType.NO_DOWNLOADS_CONNECTED, viewState.errorType)
+    //        assertEquals(0, viewState.collectionItemUiModels.size)
+    //    }
 }

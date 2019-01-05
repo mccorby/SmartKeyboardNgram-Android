@@ -17,7 +17,7 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".service.SmartInputMethodService"
+        <service android:name=".service.SmartKeyboard"
                  android:permission="android.permission.BIND_INPUT_METHOD">
             <intent-filter>
                 <action android:name="android.view.InputMethod" />
