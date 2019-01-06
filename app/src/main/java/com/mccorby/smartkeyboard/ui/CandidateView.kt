@@ -235,7 +235,7 @@ class CandidateView
         scrollTo(0, 0)
         mTargetScrollX = 0
         // Compute the total width
-        draw(null)
+        onDraw(null)
         invalidate()
         requestLayout()
     }
@@ -292,7 +292,7 @@ class CandidateView
     fun takeSuggestionAt(x: Float) {
         mTouchX = x.toInt()
         // To detect candidate
-        draw(null)
+        onDraw(null)
         if (mSelectedIndex >= 0) {
             mService!!.pickSuggestionManually(mSelectedIndex)
         }
