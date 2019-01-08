@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.mccorby.smartkeyboard.ui
+package com.mccorby.smartkeyboard.service
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -26,8 +27,7 @@ import android.view.View
 import com.mccorby.smartkeyboard.R
 import java.util.ArrayList
 
-import com.mccorby.smartkeyboard.service.SmartKeyboard
-
+// TODO Transform into a simpler view for this PoC
 class CandidateView
 /**
  * Construct a CandidateView for showing suggested words for completion.
@@ -223,10 +223,8 @@ class CandidateView
         invalidate()
     }
 
-    fun setSuggestions(
-        suggestions: List<String>?, completions: Boolean,
-        typedWordValid: Boolean
-    ) {
+    @SuppressLint("WrongCall")
+    fun setSuggestions(suggestions: List<String>?, completions: Boolean, typedWordValid: Boolean) {
         clear()
         if (suggestions != null) {
             mSuggestions = ArrayList(suggestions)
@@ -289,6 +287,7 @@ class CandidateView
      * gesture.
      * @param x
      */
+    @SuppressLint("WrongCall")
     fun takeSuggestionAt(x: Float) {
         mTouchX = x.toInt()
         // To detect candidate

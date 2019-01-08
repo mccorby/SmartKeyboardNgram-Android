@@ -11,9 +11,15 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.*
+import com.mccorby.machinelearning.nlp.NGrams
+import com.mccorby.machinelearning.nlp.StupidBackoffRanking
+import com.mccorby.smartkeyboard.MODEL_ORDER
 import com.mccorby.smartkeyboard.R
-import com.mccorby.smartkeyboard.ui.CandidateView
+import com.mccorby.smartkeyboard.SmartKeyboardApp
+import kotlin.math.max
 
+
+private const val N_PREDICTIONS = 3
 
 class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListener {
 
@@ -27,15 +33,15 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * a QWERTY keyboard to Chinese), but may not be used for input methods
      * that are primarily intended to be used for on-screen text entry.
      */
-    val PROCESS_HARD_KEYS = true
+    private val PROCESS_HARD_KEYS = true
     private var mInputMethodManager: InputMethodManager? = null
     private var mInputView: LatinKeyboardView? = null
     private var mCandidateView: CandidateView? = null
     private var mCompletions: Array<CompletionInfo>? = null
 
-    private val mComposing = StringBuilder()
+    private val composing = StringBuilder()
     private var mPredictionOn: Boolean = false
-    private var mCompletionOn: Boolean = false
+    private var completionOn: Boolean = false
     private var mLastDisplayWidth: Int = 0
     private var mCapsLock: Boolean = false
     private var mLastShiftTime: Long = 0
@@ -48,6 +54,9 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     private var mCurKeyboard: LatinKeyboard? = null
 
     private var mWordSeparators: String? = null
+
+    // TODO inject
+    private val ngrams = NGrams(StupidBackoffRanking())
 
     /**
      * Main initialization of the input method component.  Be sure to call
@@ -120,7 +129,6 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
         // Reset our state.  We want to do this even if restarting, because
         // the underlying state of the text editor could have changed in any way.
-        mComposing.setLength(0)
         updateCandidates()
 
         if (!restarting) {
@@ -129,7 +137,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         }
 
         mPredictionOn = false
-        mCompletionOn = false
+        completionOn = false
         mCompletions = null
 
         // We are now going to initialize our state based on the type of
@@ -178,7 +186,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                     // candidates when in fullscreen mode, otherwise relying
                     // own it displaying its own UI.
                     mPredictionOn = false
-                    mCompletionOn = isFullscreenMode
+                    completionOn = isFullscreenMode
                 }
 
                 // We also want to look at the current state of the editor
@@ -208,7 +216,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         super.onFinishInput()
 
         // Clear current composing text and candidates.
-        mComposing.setLength(0)
+        composing.setLength(0)
         updateCandidates()
 
         // We only hide the candidates window when finishing input on
@@ -251,8 +259,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
         // If the current selection in the text view changes, we should
         // clear whatever candidate text we have.
-        if (mComposing.length > 0 && (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)) {
-            mComposing.setLength(0)
+        if (composing.isNotEmpty() && (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)) {
             updateCandidates()
             val ic = currentInputConnection
             ic?.finishComposingText()
@@ -266,7 +273,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * in that situation.
      */
     override fun onDisplayCompletions(completions: Array<CompletionInfo>?) {
-        if (mCompletionOn) {
+        if (completionOn) {
             mCompletions = completions
             if (completions == null) {
                 setSuggestions(null, false, false)
@@ -276,7 +283,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
             val stringList = ArrayList<String>()
             for (i in completions.indices) {
                 val ci = completions[i]
-                if (ci != null) stringList.add(ci.text.toString())
+                stringList.add(ci.text.toString())
             }
             setSuggestions(stringList, true, true)
         }
@@ -299,19 +306,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
             return false
         }
 
-        var dead = false
         if (c and KeyCharacterMap.COMBINING_ACCENT != 0) {
-            dead = true
             c = c and KeyCharacterMap.COMBINING_ACCENT_MASK
-        }
-
-        if (mComposing.length > 0) {
-            val accent = mComposing[mComposing.length - 1]
-            val composed = KeyEvent.getDeadChar(accent.toInt(), c)
-            if (composed != 0) {
-                c = composed
-                mComposing.setLength(mComposing.length - 1)
-            }
         }
 
         onKey(c, null)
@@ -341,7 +337,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 // Special handling of the delete key: if we currently are
                 // composing text for the user, we want to modify that instead
                 // of let the application to the delete itself.
-                if (mComposing.length > 0) {
+                if (composing.length > 0) {
                     onKey(Keyboard.KEYCODE_DELETE, null)
                     return true
                 }
@@ -408,11 +404,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * Helper function to commit any text being composed in to the editor.
      */
     private fun commitTyped(inputConnection: InputConnection) {
-        if (mComposing.length > 0) {
-            inputConnection.commitText(mComposing, mComposing.length)
-            mComposing.setLength(0)
             updateCandidates()
-        }
     }
 
     /**
@@ -420,8 +412,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * editor state.
      */
     private fun updateShiftKeyState(attr: EditorInfo?) {
-        if (attr != null
-            && mInputView != null && mQwertyKeyboard == mInputView!!.keyboard
+        if (attr != null && mInputView != null && mQwertyKeyboard == mInputView!!.keyboard
         ) {
             var caps = 0
             val ei = currentInputEditorInfo
@@ -436,11 +427,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * Helper to determine if a given character code is alphabetic.
      */
     private fun isAlphabet(code: Int): Boolean {
-        return if (Character.isLetter(code)) {
-            true
-        } else {
-            false
-        }
+//        return Character.isLetterOrDigit(code) || Character.isSpaceChar(code)
+        return true
     }
 
     /**
@@ -471,14 +459,15 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
     // Implementation of KeyboardViewListener
     override fun onKey(primaryCode: Int, keyCodes: IntArray?) {
-        if (isWordSeparator(primaryCode)) {
-            // Handle separator
-            if (mComposing.length > 0) {
-                commitTyped(currentInputConnection)
-            }
-            sendKey(primaryCode)
-            updateShiftKeyState(currentInputEditorInfo)
-        } else if (primaryCode == Keyboard.KEYCODE_DELETE) {
+//        if (isWordSeparator(primaryCode)) {
+//            // Handle separator
+//            if (composing.length > 0) {
+//                commitTyped(currentInputConnection)
+//            }
+//            sendKey(primaryCode)
+//            updateShiftKeyState(currentInputEditorInfo)
+//        } else
+        if (primaryCode == Keyboard.KEYCODE_DELETE) {
             handleBackspace()
         } else if (primaryCode == Keyboard.KEYCODE_SHIFT) {
             handleShift()
@@ -506,7 +495,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     override fun onText(text: CharSequence) {
         val ic = currentInputConnection ?: return
         ic.beginBatchEdit()
-        if (mComposing.length > 0) {
+        if (composing.isNotEmpty()) {
             commitTyped(ic)
         }
         ic.commitText(text, 0)
@@ -520,10 +509,9 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * candidates.
      */
     private fun updateCandidates() {
-        if (!mCompletionOn) {
-            if (mComposing.length > 0) {
-                val list = ArrayList<String>()
-                list.add(mComposing.toString())
+        if (!completionOn) {
+            if (composing.isNotEmpty()) {
+                val list = getPredictions(composing.toString()).toList()
                 setSuggestions(list, true, true)
             } else {
                 setSuggestions(null, false, false)
@@ -531,11 +519,11 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         }
     }
 
-    fun setSuggestions(
+    private fun setSuggestions(
         suggestions: List<String>?, completions: Boolean,
         typedWordValid: Boolean
     ) {
-        if (suggestions != null && suggestions.size > 0) {
+        if (suggestions != null && suggestions.isNotEmpty()) {
             setCandidatesViewShown(true)
         } else if (isExtractViewShown) {
             setCandidatesViewShown(true)
@@ -546,13 +534,12 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     private fun handleBackspace() {
-        val length = mComposing.length
+        val length = composing.length
         if (length > 1) {
-            mComposing.delete(length - 1, length)
-            currentInputConnection.setComposingText(mComposing, 1)
+            composing.delete(length - 1, length)
+            currentInputConnection.setComposingText(composing, 1)
             updateCandidates()
         } else if (length > 0) {
-            mComposing.setLength(0)
             currentInputConnection.commitText("", 0)
             updateCandidates()
         } else {
@@ -582,22 +569,18 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         }
     }
 
-    private fun handleCharacter(primaryCode: Int, keyCodes: IntArray?) {
-        var primaryCode = primaryCode
+    private fun handleCharacter(inputPrimaryCode: Int, keyCodes: IntArray?) {
+        var primaryCode = inputPrimaryCode
         if (isInputViewShown) {
             if (mInputView!!.isShifted) {
                 primaryCode = Character.toUpperCase(primaryCode)
             }
         }
         if (isAlphabet(primaryCode) && mPredictionOn) {
-            mComposing.append(primaryCode.toChar())
-            currentInputConnection.setComposingText(mComposing, 1)
+            composing.append(primaryCode.toChar())
+            currentInputConnection.setComposingText(composing, 1)
             updateShiftKeyState(currentInputEditorInfo)
             updateCandidates()
-        } else {
-            currentInputConnection.commitText(
-                primaryCode.toChar().toString(), 1
-            )
         }
     }
 
@@ -627,21 +610,12 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         }
     }
 
-    private fun getWordSeparators(): String? {
-        return mWordSeparators
-    }
-
-    fun isWordSeparator(code: Int): Boolean {
-        val separators = getWordSeparators()
-        return separators!!.contains(code.toChar().toString())
-    }
-
     fun pickDefaultCandidate() {
         pickSuggestionManually(0)
     }
 
     fun pickSuggestionManually(index: Int) {
-        if (mCompletionOn && mCompletions != null && index >= 0
+        if (completionOn && mCompletions != null && index >= 0
             && index < mCompletions!!.size
         ) {
             val ci = mCompletions!![index]
@@ -650,7 +624,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 mCandidateView!!.clear()
             }
             updateShiftKeyState(currentInputEditorInfo)
-        } else if (mComposing.length > 0) {
+        } else if (composing.length > 0) {
             // If we were generating candidate suggestions for the current
             // text, we would commit one of them here.  But for this sample,
             // we will just commit the current text.
@@ -659,7 +633,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     override fun swipeRight() {
-        if (mCompletionOn) {
+        if (completionOn) {
             pickDefaultCandidate()
         }
     }
@@ -677,4 +651,39 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     override fun onPress(primaryCode: Int) {}
 
     override fun onRelease(primaryCode: Int) {}
+
+
+    // Select candidates and increase the corresponding history
+    private fun getPredictions(seed: String): Sequence<String> {
+        // Only interested in the first nPredictions best predictions
+        val candidates = generateInitialCandidates(seed).entries.sortedByDescending { it.value }.take(N_PREDICTIONS)
+
+        // Build a word for each candidate
+        return candidates.map { buildWord("$seed${it.key}") }.asSequence()
+    }
+
+    // Generate candidates based on the input (one for each word that will be shown to the user)
+    private fun generateInitialCandidates(seed: String = ""): Map<Char, Float> {
+        val initValue = NGrams.START_CHAR.repeat(max(MODEL_ORDER - seed.length, 0))
+        val history = "$initValue$seed"
+
+        val candidates =
+            ngrams.generateCandidates((application as SmartKeyboardApp).languageModel, MODEL_ORDER, history)
+        println(candidates)
+        return candidates
+    }
+
+    // TODO Should this be done in parallel for each seed?
+    private fun buildWord(history: String): String {
+        var tmp = history
+
+        while (!tmp.endsWith(" ")) {
+            tmp = "$tmp${ngrams.generateNextChar((application as SmartKeyboardApp).languageModel, MODEL_ORDER, tmp)}"
+        }
+        // history can be a set of words thus we must split it and take the last one
+        val result = tmp.trimEnd().split(" ").takeLast(1)[0]
+        println(result)
+        return result
+    }
+
 }

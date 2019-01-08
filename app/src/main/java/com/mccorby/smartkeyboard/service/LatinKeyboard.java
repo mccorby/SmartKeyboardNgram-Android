@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 package com.mccorby.smartkeyboard.service;
+
 import android.content.Context;
 import android.content.res.Resources;
 import android.content.res.XmlResourceParser;
 import android.graphics.drawable.Drawable;
 import android.inputmethodservice.Keyboard;
 import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputMethodManager;
 import com.mccorby.smartkeyboard.R;
 
 public class LatinKeyboard extends Keyboard {
