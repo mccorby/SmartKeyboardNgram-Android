@@ -533,6 +533,13 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     fun pickSuggestion(suggestion: String) {
+        // Find the last space and replace from there with the suggestion
+        val spacePos = composing.lastIndexOf(" ")
+        if (spacePos > 0) {
+            composing.delete(spacePos + 1, composing.length)
+        } else {
+            composing.setLength(0)
+        }
         composing.append(suggestion)
         currentInputConnection.setComposingText(composing, 1)
     }
