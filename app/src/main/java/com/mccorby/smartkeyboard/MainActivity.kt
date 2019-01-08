@@ -50,15 +50,4 @@ class MainActivity : AppCompatActivity() {
 //        })
     }
 
-    // TODO Refactor this method
-    private fun updatePredictions(prediction: List<String>) {
-        first_prediction.text = ""
-        first_prediction.text = if (prediction.isNotEmpty()) prediction[0] else ""
-
-        second_prediction.text = ""
-        second_prediction.text = if (prediction.size > 1) prediction[1] else ""
-
-        third_prediction.text = ""
-        third_prediction.text = if (prediction.size > 2) prediction[2] else ""
-    }
 }

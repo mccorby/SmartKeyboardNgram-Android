@@ -21,39 +21,29 @@ import kotlin.math.max
 
 private const val N_PREDICTIONS = 3
 
+/**
+ * This class is based on SoftKeyboard from AOSP https://android.googlesource.com/platform/development/+/master/samples/SoftKeyboard/src/com/example/android/softkeyboard/SoftKeyboard.java
+ * It makes use of the NGram class and a Language model to generate suggestions as the user writes in the corresponding text view
+ */
 class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListener {
 
-    val DEBUG = false
-
-    /**
-     * This boolean indicates the optional example code for performing
-     * processing of hard keys in addition to regular text generation
-     * from on-screen interaction.  It would be used for input methods that
-     * perform language translations (such as converting text entered on
-     * a QWERTY keyboard to Chinese), but may not be used for input methods
-     * that are primarily intended to be used for on-screen text entry.
-     */
     private val PROCESS_HARD_KEYS = true
-    private var mInputMethodManager: InputMethodManager? = null
-    private var mInputView: LatinKeyboardView? = null
-    private var mCandidateView: CandidateView? = null
-    private var mCompletions: Array<CompletionInfo>? = null
+    private var inputMethodManager: InputMethodManager? = null
+    private var inputView: LatinKeyboardView? = null
+    private var candidateView: CandidateView? = null
+    private var completions: Array<CompletionInfo>? = null
 
     private val composing = StringBuilder()
-    private var mPredictionOn: Boolean = false
+    private var predictionOn: Boolean = false
     private var completionOn: Boolean = false
-    private var mLastDisplayWidth: Int = 0
-    private var mCapsLock: Boolean = false
-    private var mLastShiftTime: Long = 0
-    private var mMetaState: Long = 0
+    private var lastDisplayWidth: Int = 0
+    private var capsLock: Boolean = false
+    private var lastShiftTime: Long = 0
+    private var metaState: Long = 0
 
-    private var mSymbolsKeyboard: LatinKeyboard? = null
-    private var mSymbolsShiftedKeyboard: LatinKeyboard? = null
-    private var mQwertyKeyboard: LatinKeyboard? = null
+    private var qwertyKeyboard: LatinKeyboard? = null
 
-    private var mCurKeyboard: LatinKeyboard? = null
-
-    private var mWordSeparators: String? = null
+    private var wordSeparators: String? = null
 
     // TODO inject
     private val ngrams = NGrams(StupidBackoffRanking())
@@ -64,8 +54,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      */
     override fun onCreate() {
         super.onCreate()
-        mInputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        mWordSeparators = resources.getString(R.string.word_separators)
+        inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        wordSeparators = resources.getString(R.string.word_separators)
     }
 
     /**
@@ -73,17 +63,15 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * is called after creation and any configuration change.
      */
     override fun onInitializeInterface() {
-        if (mQwertyKeyboard != null) {
+        if (this.qwertyKeyboard != null) {
             // Configuration changes can happen after the keyboard gets recreated,
             // so we need to be able to re-build the keyboards if the available
             // space has changed.
             val displayWidth = maxWidth
-            if (displayWidth == mLastDisplayWidth) return
-            mLastDisplayWidth = displayWidth
+            if (displayWidth == lastDisplayWidth) return
+            lastDisplayWidth = displayWidth
         }
-        mQwertyKeyboard = LatinKeyboard(this, R.xml.qwerty)
-        mSymbolsKeyboard = LatinKeyboard(this, R.xml.symbols)
-        mSymbolsShiftedKeyboard = LatinKeyboard(this, R.xml.symbols_shift)
+        this.qwertyKeyboard = LatinKeyboard(this, R.xml.qwerty)
     }
 
     /**
@@ -93,18 +81,18 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * a configuration change.
      */
     override fun onCreateInputView(): View? {
-        mInputView = layoutInflater.inflate(
+        inputView = layoutInflater.inflate(
             R.layout.input, null
         ) as LatinKeyboardView
-        mInputView!!.setOnKeyboardActionListener(this)
-        setLatinKeyboard(mQwertyKeyboard!!)
-        return mInputView
+        inputView!!.setOnKeyboardActionListener(this)
+        setLatinKeyboard(this.qwertyKeyboard!!)
+        return inputView
     }
 
     private fun setLatinKeyboard(nextKeyboard: LatinKeyboard) {
-        val shouldSupportLanguageSwitchKey = mInputMethodManager!!.shouldOfferSwitchingToNextInputMethod(getToken())
+        val shouldSupportLanguageSwitchKey = inputMethodManager!!.shouldOfferSwitchingToNextInputMethod(getToken())
         nextKeyboard.setLanguageSwitchKeyVisibility(shouldSupportLanguageSwitchKey)
-        mInputView!!.keyboard = nextKeyboard
+        inputView!!.keyboard = nextKeyboard
     }
 
     /**
@@ -112,10 +100,10 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * be generated, like [.onCreateInputView].
      */
     override fun onCreateCandidatesView(): View? {
-        mCandidateView = CandidateView(this).also {
+        candidateView = CandidateView(this).also {
             it.setService(this)
         }
-        return mCandidateView
+        return candidateView
     }
 
     /**
@@ -133,33 +121,23 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
         if (!restarting) {
             // Clear shift states.
-            mMetaState = 0
+            metaState = 0
         }
 
-        mPredictionOn = false
+        predictionOn = false
         completionOn = false
-        mCompletions = null
+        completions = null
 
         // We are now going to initialize our state based on the type of
         // text being edited.
         when (attribute.inputType and InputType.TYPE_MASK_CLASS) {
-            InputType.TYPE_CLASS_NUMBER, InputType.TYPE_CLASS_DATETIME ->
-                // Numbers and dates default to the symbols keyboard, with
-                // no extra features.
-                mCurKeyboard = mSymbolsKeyboard
-
-            InputType.TYPE_CLASS_PHONE ->
-                // Phones will also default to the symbols keyboard, though
-                // often you will want to have a dedicated phone keyboard.
-                mCurKeyboard = mSymbolsKeyboard
-
             InputType.TYPE_CLASS_TEXT -> {
                 // This is general text editing.  We will default to the
                 // normal alphabetic keyboard, and assume that we should
                 // be doing predictive text (showing candidates as the
                 // user types).
-                mCurKeyboard = mQwertyKeyboard
-                mPredictionOn = true
+
+                predictionOn = true
 
                 // We now look for a few special variations of text that will
                 // modify our behavior.
@@ -167,7 +145,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 if (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) {
                     // Do not display predictions / what the user is typing
                     // when they are entering a password.
-                    mPredictionOn = false
+                    predictionOn = false
                 }
 
                 if (variation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
@@ -176,7 +154,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 ) {
                     // Our predictions are not useful for e-mail addresses
                     // or URIs.
-                    mPredictionOn = false
+                    predictionOn = false
                 }
 
                 if (attribute.inputType and InputType.TYPE_TEXT_FLAG_AUTO_COMPLETE != 0) {
@@ -185,7 +163,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                     // to supply their own.  We only show the editor's
                     // candidates when in fullscreen mode, otherwise relying
                     // own it displaying its own UI.
-                    mPredictionOn = false
+                    predictionOn = false
                     completionOn = isFullscreenMode
                 }
 
@@ -198,14 +176,14 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
             else -> {
                 // For all unknown input types, default to the alphabetic
                 // keyboard with no special features.
-                mCurKeyboard = mQwertyKeyboard
+
                 updateShiftKeyState(attribute)
             }
         }
 
         // Update the label on the enter key, depending on what the application
         // says it will do.
-        mCurKeyboard!!.setImeOptions(resources, attribute.imeOptions)
+        this.qwertyKeyboard!!.setImeOptions(resources, attribute.imeOptions)
     }
 
     /**
@@ -225,23 +203,23 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         // its window.
         setCandidatesViewShown(false)
 
-        mCurKeyboard = mQwertyKeyboard
-        if (mInputView != null) {
-            mInputView!!.closing()
+
+        if (inputView != null) {
+            inputView!!.closing()
         }
     }
 
     override fun onStartInputView(attribute: EditorInfo, restarting: Boolean) {
         super.onStartInputView(attribute, restarting)
         // Apply the selected keyboard to the input view.
-        setLatinKeyboard(mCurKeyboard!!)
-        mInputView!!.closing()
-        val subtype = mInputMethodManager!!.getCurrentInputMethodSubtype()
-        mInputView!!.setSubtypeOnSpaceKey(subtype)
+        setLatinKeyboard(this.qwertyKeyboard!!)
+        inputView!!.closing()
+        val subtype = inputMethodManager!!.getCurrentInputMethodSubtype()
+        inputView!!.setSubtypeOnSpaceKey(subtype)
     }
 
     public override fun onCurrentInputMethodSubtypeChanged(subtype: InputMethodSubtype) {
-        mInputView!!.setSubtypeOnSpaceKey(subtype)
+        inputView!!.setSubtypeOnSpaceKey(subtype)
     }
 
     /**
@@ -274,9 +252,9 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      */
     override fun onDisplayCompletions(completions: Array<CompletionInfo>?) {
         if (completionOn) {
-            mCompletions = completions
+            this.completions = completions
             if (completions == null) {
-                setSuggestions(null, false, false)
+                setSuggestions(emptyList(), false, false)
                 return
             }
 
@@ -295,12 +273,12 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
      * PROCESS_HARD_KEYS option.
      */
     private fun translateKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        mMetaState = MetaKeyKeyListener.handleKeyDown(
-            mMetaState,
+        metaState = MetaKeyKeyListener.handleKeyDown(
+            metaState,
             keyCode, event
         )
-        var c = event.getUnicodeChar(MetaKeyKeyListener.getMetaState(mMetaState))
-        mMetaState = MetaKeyKeyListener.adjustMetaAfterKeypress(mMetaState)
+        var c = event.getUnicodeChar(MetaKeyKeyListener.getMetaState(metaState))
+        metaState = MetaKeyKeyListener.adjustMetaAfterKeypress(metaState)
         val ic = currentInputConnection
         if (c == 0 || ic == null) {
             return false
@@ -327,8 +305,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 // key for us, to dismiss the input method if it is shown.
                 // However, our keyboard could be showing a pop-up window
                 // that back should dismiss, so we first allow it to do that.
-                if (event.repeatCount == 0 && mInputView != null) {
-                    if (mInputView!!.handleBack()) {
+                if (event.repeatCount == 0 && inputView != null) {
+                    if (inputView!!.handleBack()) {
                         return true
                     }
                 }
@@ -370,7 +348,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                             return true
                         }
                     }
-                    if (mPredictionOn && translateKeyDown(keyCode, event)) {
+                    if (predictionOn && translateKeyDown(keyCode, event)) {
                         return true
                     }
                 }
@@ -389,9 +367,9 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         // keyboard, we need to process the up events to update the meta key
         // state we are tracking.
         if (PROCESS_HARD_KEYS) {
-            if (mPredictionOn) {
-                mMetaState = MetaKeyKeyListener.handleKeyUp(
-                    mMetaState,
+            if (predictionOn) {
+                metaState = MetaKeyKeyListener.handleKeyUp(
+                    metaState,
                     keyCode, event
                 )
             }
@@ -401,34 +379,19 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     /**
-     * Helper function to commit any text being composed in to the editor.
-     */
-    private fun commitTyped(inputConnection: InputConnection) {
-            updateCandidates()
-    }
-
-    /**
      * Helper to update the shift state of our keyboard based on the initial
      * editor state.
      */
     private fun updateShiftKeyState(attr: EditorInfo?) {
-        if (attr != null && mInputView != null && mQwertyKeyboard == mInputView!!.keyboard
+        if (attr != null && inputView != null && this.qwertyKeyboard == inputView!!.keyboard
         ) {
             var caps = 0
             val ei = currentInputEditorInfo
             if (ei != null && ei.inputType != InputType.TYPE_NULL) {
                 caps = currentInputConnection.getCursorCapsMode(attr.inputType)
             }
-            mInputView!!.isShifted = mCapsLock || caps != 0
+            inputView!!.isShifted = capsLock || caps != 0
         }
-    }
-
-    /**
-     * Helper to determine if a given character code is alphabetic.
-     */
-    private fun isAlphabet(code: Int): Boolean {
-//        return Character.isLetterOrDigit(code) || Character.isSpaceChar(code)
-        return true
     }
 
     /**
@@ -443,30 +406,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         )
     }
 
-    /**
-     * Helper to send a character to the editor as raw key events.
-     */
-    private fun sendKey(keyCode: Int) {
-        when (keyCode) {
-            '\n'.toInt() -> keyDownUp(KeyEvent.KEYCODE_ENTER)
-            else -> if (keyCode >= '0'.toInt() && keyCode <= '9'.toInt()) {
-                keyDownUp(keyCode - '0'.toInt() + KeyEvent.KEYCODE_0)
-            } else {
-                currentInputConnection.commitText(keyCode.toChar().toString(), 1)
-            }
-        }
-    }
-
     // Implementation of KeyboardViewListener
     override fun onKey(primaryCode: Int, keyCodes: IntArray?) {
-//        if (isWordSeparator(primaryCode)) {
-//            // Handle separator
-//            if (composing.length > 0) {
-//                commitTyped(currentInputConnection)
-//            }
-//            sendKey(primaryCode)
-//            updateShiftKeyState(currentInputEditorInfo)
-//        } else
         if (primaryCode == Keyboard.KEYCODE_DELETE) {
             handleBackspace()
         } else if (primaryCode == Keyboard.KEYCODE_SHIFT) {
@@ -479,14 +420,6 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
             return
         } else if (primaryCode == LatinKeyboardView.KEYCODE_OPTIONS) {
             // Show a menu or somethin'
-        } else if (primaryCode == Keyboard.KEYCODE_MODE_CHANGE && mInputView != null) {
-            val current = mInputView!!.keyboard
-            if (current === mSymbolsKeyboard || current === mSymbolsShiftedKeyboard) {
-                setLatinKeyboard(mQwertyKeyboard!!)
-            } else {
-                setLatinKeyboard(mSymbolsKeyboard!!)
-                mSymbolsKeyboard!!.isShifted = false
-            }
         } else {
             handleCharacter(primaryCode, keyCodes)
         }
@@ -495,9 +428,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     override fun onText(text: CharSequence) {
         val ic = currentInputConnection ?: return
         ic.beginBatchEdit()
-        if (composing.isNotEmpty()) {
-            commitTyped(ic)
-        }
+
         ic.commitText(text, 0)
         ic.endBatchEdit()
         updateShiftKeyState(currentInputEditorInfo)
@@ -514,69 +445,61 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 val list = getPredictions(composing.toString()).toList()
                 setSuggestions(list, true, true)
             } else {
-                setSuggestions(null, false, false)
+                setSuggestions(emptyList(), false, false)
             }
         }
     }
 
     private fun setSuggestions(
-        suggestions: List<String>?, completions: Boolean,
+        suggestions: List<String>, completions: Boolean,
         typedWordValid: Boolean
     ) {
-        if (suggestions != null && suggestions.isNotEmpty()) {
+        if (suggestions.isNotEmpty()) {
             setCandidatesViewShown(true)
         } else if (isExtractViewShown) {
             setCandidatesViewShown(true)
         }
-        if (mCandidateView != null) {
-            mCandidateView!!.setSuggestions(suggestions, completions, typedWordValid)
+        if (candidateView != null) {
+            candidateView!!.setSuggestions(suggestions, completions, typedWordValid)
         }
     }
 
     private fun handleBackspace() {
         val length = composing.length
-        if (length > 1) {
-            composing.delete(length - 1, length)
-            currentInputConnection.setComposingText(composing, 1)
-            updateCandidates()
-        } else if (length > 0) {
-            currentInputConnection.commitText("", 0)
-            updateCandidates()
-        } else {
-            keyDownUp(KeyEvent.KEYCODE_DEL)
+        when {
+            length > 1 -> {
+                composing.delete(length - 1, length)
+                currentInputConnection.setComposingText(composing, 1)
+                updateCandidates()
+            }
+            length > 0 -> {
+                composing.clear()
+                currentInputConnection.commitText("", 0)
+                updateCandidates()
+            }
+            else -> keyDownUp(KeyEvent.KEYCODE_DEL)
         }
         updateShiftKeyState(currentInputEditorInfo)
     }
 
     private fun handleShift() {
-        if (mInputView == null) {
+        if (inputView == null) {
             return
         }
 
-        val currentKeyboard = mInputView!!.keyboard
-        if (mQwertyKeyboard == currentKeyboard) {
-            // Alphabet keyboard
-            checkToggleCapsLock()
-            mInputView!!.isShifted = mCapsLock || !mInputView!!.isShifted
-        } else if (currentKeyboard === mSymbolsKeyboard) {
-            mSymbolsKeyboard!!.isShifted = true
-            setLatinKeyboard(mSymbolsShiftedKeyboard!!)
-            mSymbolsShiftedKeyboard!!.isShifted = true
-        } else if (currentKeyboard === mSymbolsShiftedKeyboard) {
-            mSymbolsShiftedKeyboard!!.isShifted = false
-            setLatinKeyboard(mSymbolsKeyboard!!)
-            mSymbolsKeyboard!!.isShifted = false
-        }
+        // Alphabet keyboard
+        checkToggleCapsLock()
+        inputView!!.isShifted = capsLock || !inputView!!.isShifted
     }
 
     private fun handleCharacter(inputPrimaryCode: Int, keyCodes: IntArray?) {
         var primaryCode = inputPrimaryCode
         if (isInputViewShown) {
-            if (mInputView!!.isShifted) {
+            if (inputView!!.isShifted) {
                 primaryCode = Character.toUpperCase(primaryCode)
             }
         }
-        if (isAlphabet(primaryCode) && mPredictionOn) {
+        if (predictionOn) {
             composing.append(primaryCode.toChar())
             currentInputConnection.setComposingText(composing, 1)
             updateShiftKeyState(currentInputEditorInfo)
@@ -585,9 +508,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     private fun handleClose() {
-        commitTyped(currentInputConnection)
         requestHideSelf(0)
-        mInputView!!.closing()
+        inputView!!.closing()
     }
 
     private fun getToken(): IBinder? {
@@ -597,54 +519,29 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     private fun handleLanguageSwitch() {
-        mInputMethodManager!!.switchToNextInputMethod(getToken(), false /* onlyCurrentIme */)
+        inputMethodManager!!.switchToNextInputMethod(getToken(), false /* onlyCurrentIme */)
     }
 
     private fun checkToggleCapsLock() {
         val now = System.currentTimeMillis()
-        if (mLastShiftTime + 800 > now) {
-            mCapsLock = !mCapsLock
-            mLastShiftTime = 0
+        if (lastShiftTime + 800 > now) {
+            capsLock = !capsLock
+            lastShiftTime = 0
         } else {
-            mLastShiftTime = now
+            lastShiftTime = now
         }
     }
 
-    fun pickDefaultCandidate() {
-        pickSuggestionManually(0)
+    fun pickSuggestion(suggestion: String) {
+        composing.append(suggestion)
+        currentInputConnection.setComposingText(composing, 1)
     }
 
-    fun pickSuggestionManually(index: Int) {
-        if (completionOn && mCompletions != null && index >= 0
-            && index < mCompletions!!.size
-        ) {
-            val ci = mCompletions!![index]
-            currentInputConnection.commitCompletion(ci)
-            if (mCandidateView != null) {
-                mCandidateView!!.clear()
-            }
-            updateShiftKeyState(currentInputEditorInfo)
-        } else if (composing.length > 0) {
-            // If we were generating candidate suggestions for the current
-            // text, we would commit one of them here.  But for this sample,
-            // we will just commit the current text.
-            commitTyped(currentInputConnection)
-        }
-    }
+    override fun swipeRight() {}
 
-    override fun swipeRight() {
-        if (completionOn) {
-            pickDefaultCandidate()
-        }
-    }
+    override fun swipeLeft() {}
 
-    override fun swipeLeft() {
-        handleBackspace()
-    }
-
-    override fun swipeDown() {
-        handleClose()
-    }
+    override fun swipeDown() {}
 
     override fun swipeUp() {}
 
