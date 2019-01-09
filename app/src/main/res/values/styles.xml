@@ -8,4 +8,12 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <style name="Candidate" parent="TextAppearance.AppCompat">
+        <item name="android:textSize">@dimen/candidate_font_height</item>
+        <item name="android:paddingBottom">@dimen/candidate_vertical_padding</item>
+        <item name="android:paddingTop">@dimen/candidate_vertical_padding</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@color/candidate_background</item>
+    </style>
+
 </resources>

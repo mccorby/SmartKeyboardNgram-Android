@@ -24,5 +24,4 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:keyPreviewLayout="@layout/key_preview"
-        android:background="@color/colorPrimary"
 />

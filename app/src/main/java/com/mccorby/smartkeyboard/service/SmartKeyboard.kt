@@ -10,16 +10,20 @@ import android.text.method.MetaKeyKeyListener
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
-import android.view.inputmethod.*
+import android.view.inputmethod.CompletionInfo
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.InputMethodSubtype
 import com.mccorby.machinelearning.nlp.NGrams
 import com.mccorby.machinelearning.nlp.StupidBackoffRanking
-import com.mccorby.smartkeyboard.MODEL_ORDER
 import com.mccorby.smartkeyboard.R
 import com.mccorby.smartkeyboard.SmartKeyboardApp
 import kotlin.math.max
 
 
 private const val N_PREDICTIONS = 3
+// TODO This should come from a config file representing the model
+private const val MODEL_ORDER = 5
 
 /**
  * This class is based on SoftKeyboard from AOSP https://android.googlesource.com/platform/development/+/master/samples/SoftKeyboard/src/com/example/android/softkeyboard/SoftKeyboard.java
@@ -214,7 +218,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         // Apply the selected keyboard to the input view.
         setLatinKeyboard(this.qwertyKeyboard!!)
         inputView!!.closing()
-        val subtype = inputMethodManager!!.getCurrentInputMethodSubtype()
+        val subtype = inputMethodManager!!.currentInputMethodSubtype
         inputView!!.setSubtypeOnSpaceKey(subtype)
     }
 
@@ -254,7 +258,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         if (completionOn) {
             this.completions = completions
             if (completions == null) {
-                setSuggestions(emptyList(), false, false)
+                setSuggestions(emptyList())
                 return
             }
 
@@ -263,7 +267,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 val ci = completions[i]
                 stringList.add(ci.text.toString())
             }
-            setSuggestions(stringList, true, true)
+            setSuggestions(stringList)
         }
     }
 
@@ -366,13 +370,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         // If we want to do transformations on text being entered with a hard
         // keyboard, we need to process the up events to update the meta key
         // state we are tracking.
-        if (PROCESS_HARD_KEYS) {
-            if (predictionOn) {
-                metaState = MetaKeyKeyListener.handleKeyUp(
-                    metaState,
-                    keyCode, event
-                )
-            }
+        if (PROCESS_HARD_KEYS && predictionOn) {
+            metaState = MetaKeyKeyListener.handleKeyUp(metaState, keyCode, event)
         }
 
         return super.onKeyUp(keyCode, event)
@@ -443,24 +442,21 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         if (!completionOn) {
             if (composing.isNotEmpty()) {
                 val list = getPredictions(composing.toString()).toList()
-                setSuggestions(list, true, true)
+                setSuggestions(list)
             } else {
-                setSuggestions(emptyList(), false, false)
+                setSuggestions(emptyList())
             }
         }
     }
 
-    private fun setSuggestions(
-        suggestions: List<String>, completions: Boolean,
-        typedWordValid: Boolean
-    ) {
+    private fun setSuggestions(suggestions: List<String>) {
         if (suggestions.isNotEmpty()) {
             setCandidatesViewShown(true)
         } else if (isExtractViewShown) {
             setCandidatesViewShown(true)
         }
         if (candidateView != null) {
-            candidateView!!.setSuggestions(suggestions, completions, typedWordValid)
+            candidateView!!.setSuggestions(suggestions)
         }
     }
 
@@ -483,13 +479,10 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     }
 
     private fun handleShift() {
-        if (inputView == null) {
-            return
+        inputView?.let {
+            checkToggleCapsLock()
+            inputView!!.isShifted = capsLock || !inputView!!.isShifted
         }
-
-        // Alphabet keyboard
-        checkToggleCapsLock()
-        inputView!!.isShifted = capsLock || !inputView!!.isShifted
     }
 
     private fun handleCharacter(inputPrimaryCode: Int, keyCodes: IntArray?) {
@@ -571,23 +564,24 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         val initValue = NGrams.START_CHAR.repeat(max(MODEL_ORDER - seed.length, 0))
         val history = "$initValue$seed"
 
-        val candidates =
-            ngrams.generateCandidates((application as SmartKeyboardApp).languageModel, MODEL_ORDER, history)
-        println(candidates)
-        return candidates
+        return ngrams.generateCandidates((application as SmartKeyboardApp).languageModel, MODEL_ORDER, history)
     }
 
     // TODO Should this be done in parallel for each seed?
     private fun buildWord(history: String): String {
-        var tmp = history
+        val buffer = StringBuffer(history)
 
-        while (!tmp.endsWith(" ")) {
-            tmp = "$tmp${ngrams.generateNextChar((application as SmartKeyboardApp).languageModel, MODEL_ORDER, tmp)}"
+        while (!buffer.endsWith(" ")) {
+            buffer.append(
+                ngrams.generateNextChar(
+                    (application as SmartKeyboardApp).languageModel,
+                    MODEL_ORDER,
+                    buffer.toString()
+                )
+            )
         }
         // history can be a set of words thus we must split it and take the last one
-        val result = tmp.trimEnd().split(" ").takeLast(1)[0]
-        println(result)
-        return result
+        // We could use here the list of word separators
+        return buffer.trimEnd().split(" ").takeLast(1)[0]
     }
-
 }

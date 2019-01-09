@@ -48,14 +48,14 @@ class CandidateView
         service = listener
     }
 
-    fun setSuggestions(suggestions: List<String>, completions: Boolean, typedWordValid: Boolean) {
+    fun setSuggestions(suggestions: List<String>) {
         clear()
         updatePredictions(suggestions)
         invalidate()
         requestLayout()
     }
 
-    fun clear() {
+    private fun clear() {
         suggestions = emptyList()
         invalidate()
     }
@@ -71,5 +71,4 @@ class CandidateView
         third_prediction.text = ""
         third_prediction.text = if (prediction.size > 2) prediction[2] else ""
     }
-
 }
