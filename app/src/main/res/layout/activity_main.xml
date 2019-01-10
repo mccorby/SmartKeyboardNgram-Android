@@ -13,9 +13,10 @@
             android:hint="Write here"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@android:color/background_light"
+            android:background="@color/candidate_background"
             android:layout_alignParentTop="true"
             android:inputType="text"
+            style="@android:style/TextAppearance.Material.Title"
     />
 
 </RelativeLayout>

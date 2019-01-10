@@ -14,10 +14,10 @@ import android.view.inputmethod.CompletionInfo
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.view.inputmethod.InputMethodSubtype
+import com.mccorby.machinelearning.nlp.LanguageModel
 import com.mccorby.machinelearning.nlp.NGrams
-import com.mccorby.machinelearning.nlp.StupidBackoffRanking
 import com.mccorby.smartkeyboard.R
-import com.mccorby.smartkeyboard.SmartKeyboardApp
+import org.koin.android.ext.android.inject
 import kotlin.math.max
 
 
@@ -49,8 +49,8 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
     private var wordSeparators: String? = null
 
-    // TODO inject
-    private val ngrams = NGrams(StupidBackoffRanking())
+    val ngrams: NGrams by inject()
+    val languageModel: LanguageModel by inject()
 
     /**
      * Main initialization of the input method component.  Be sure to call
@@ -564,7 +564,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         val initValue = NGrams.START_CHAR.repeat(max(MODEL_ORDER - seed.length, 0))
         val history = "$initValue$seed"
 
-        return ngrams.generateCandidates((application as SmartKeyboardApp).languageModel, MODEL_ORDER, history)
+        return ngrams.generateCandidates(languageModel, MODEL_ORDER, history)
     }
 
     // TODO Should this be done in parallel for each seed?
@@ -574,7 +574,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
         while (!buffer.endsWith(" ")) {
             buffer.append(
                 ngrams.generateNextChar(
-                    (application as SmartKeyboardApp).languageModel,
+                    languageModel,
                     MODEL_ORDER,
                     buffer.toString()
                 )
