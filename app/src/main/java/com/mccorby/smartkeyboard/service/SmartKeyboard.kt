@@ -47,7 +47,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
     private var qwertyKeyboard: LatinKeyboard? = null
 
-    private var wordSeparators: String? = null
+    private lateinit var wordSeparators: Set<Char>
 
     val ngrams: NGrams by inject()
     val languageModel: LanguageModel by inject()
@@ -59,7 +59,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     override fun onCreate() {
         super.onCreate()
         inputMethodManager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        wordSeparators = resources.getString(R.string.word_separators)
+        wordSeparators = resources.getString(R.string.word_separators).toSet()
     }
 
     /**
@@ -553,7 +553,10 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     // Select candidates and increase the corresponding history
     private fun getPredictions(seed: String): Sequence<String> {
         // Only interested in the first nPredictions best predictions
-        val candidates = generateInitialCandidates(seed).entries.sortedByDescending { it.value }.take(N_PREDICTIONS)
+        val candidates = generateInitialCandidates(seed)
+            .entries
+            .sortedByDescending { it.value }
+            .take(N_PREDICTIONS)
 
         // Build a word for each candidate
         return candidates.map { buildWord("$seed${it.key}") }.asSequence()
@@ -571,7 +574,7 @@ class SmartKeyboard : InputMethodService(), KeyboardView.OnKeyboardActionListene
     private fun buildWord(history: String): String {
         val buffer = StringBuffer(history)
 
-        while (!buffer.endsWith(" ")) {
+        while (buffer.last() !in wordSeparators) {
             buffer.append(
                 ngrams.generateNextChar(
                     languageModel,
