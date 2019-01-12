@@ -1,4 +1,4 @@
-# SMART KEYBOARD - nGram approach
+# SMART KEYBOARD - n-gram approach
 
 This app shows how to use an ngram model to allow the user to select words based on the input
 
